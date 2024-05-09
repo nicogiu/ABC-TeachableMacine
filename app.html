@@ -1,58 +1,127 @@
-<div>Teachable Machine Audio Model</div>
-<button type="button" onclick="init()">Start</button>
-<div id="label-container"></div>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine Audio Model</title>
+    <style>
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #labels-row {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .column {
+            flex: 1;
+        }
+        .label {
+            margin-bottom: 10px;
+        }
+        #status {
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .highlight {
+            font-weight: bold;
+            font-size: 120%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="status">Loading model...</div>
+        <button type="button" onclick="toggleListening()">Toggle Listening</button>
+        <div id="labels-row">
+            <div class="column" id="column1"></div>
+            <div class="column" id="column2"></div>
+            <div class="column" id="column3"></div>
+        </div>
+    </div>
 
-<script type="text/javascript">
-    // more documentation available at
-    // https://github.com/tensorflow/tfjs-models/tree/master/speech-commands
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
 
-    // the link to your model provided by Teachable Machine export panel
-    const URL = "https://teachablemachine.withgoogle.com/models/hO7_7B-6SM/";
+    <script type="text/javascript">
+        const URL = "https://teachablemachine.withgoogle.com/models/hO7_7B-6SM/";
 
-    async function createModel() {
-        const checkpointURL = URL + "model.json"; // model topology
-        const metadataURL = URL + "metadata.json"; // model metadata
+        async function createModel() {
+            const checkpointURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
 
-        const recognizer = speechCommands.create(
-            "BROWSER_FFT", // fourier transform type, not useful to change
-            undefined, // speech commands vocabulary feature, not useful for your models
-            checkpointURL,
-            metadataURL);
+            const recognizer = speechCommands.create(
+                "BROWSER_FFT",
+                undefined,
+                checkpointURL,
+                metadataURL);
 
-        // check that model and metadata are loaded via HTTPS requests.
-        await recognizer.ensureModelLoaded();
+            await recognizer.ensureModelLoaded();
 
-        return recognizer;
-    }
-
-    async function init() {
-        const recognizer = await createModel();
-        const classLabels = recognizer.wordLabels(); // get class labels
-        const labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < classLabels.length; i++) {
-            labelContainer.appendChild(document.createElement("div"));
+            return recognizer;
         }
 
-        // listen() takes two arguments:
-        // 1. A callback function that is invoked anytime a word is recognized.
-        // 2. A configuration object with adjustable fields
-        recognizer.listen(result => {
-            const scores = result.scores; // probability of prediction for each class
-            // render the probability scores per class
-            for (let i = 0; i < classLabels.length; i++) {
-                const classPrediction = classLabels[i] + ": " + result.scores[i].toFixed(2);
-                labelContainer.childNodes[i].innerHTML = classPrediction;
-            }
-        }, {
-            includeSpectrogram: true, // in case listen should return result.spectrogram
-            probabilityThreshold: 0.75,
-            invokeCallbackOnNoiseAndUnknown: true,
-            overlapFactor: 0.50 // probably want between 0.5 and 0.75. More info in README
-        });
+        let recognizer;
+        let isListening = false;
 
-        // Stop the recognition in 5 seconds.
-        // setTimeout(() => recognizer.stopListening(), 5000);
-    }
-</script>
+        async function init() {
+            recognizer = await createModel();
+            const classLabels = recognizer.wordLabels();
+            const statusElement = document.getElementById("status");
+            statusElement.textContent = "Model loaded. Click 'Toggle Listening' to start.";
+
+            const columns = [document.getElementById("column1"), document.getElementById("column2"), document.getElementById("column3")];
+
+            for (let i = 0; i < classLabels.length; i++) {
+                const labelDiv = document.createElement("div");
+                labelDiv.classList.add("label");
+                labelDiv.textContent = classLabels[i] + ": ";
+                columns[i % 3].appendChild(labelDiv);
+            }
+        }
+
+        async function toggleListening() {
+            if (!recognizer) return;
+
+            if (isListening) {
+                recognizer.stopListening();
+                isListening = false;
+            } else {
+                await recognizer.listen(result => {
+                    const scores = result.scores;
+                    const classLabels = recognizer.wordLabels();
+                    const labels = document.querySelectorAll(".label");
+
+                    let maxScoreIndex = 0;
+                    for (let i = 1; i < scores.length; i++) {
+                        if (scores[i] > scores[maxScoreIndex]) {
+                            maxScoreIndex = i;
+                        }
+                    }
+
+                    for (let i = 0; i < classLabels.length; i++) {
+                        const label = labels[i];
+                        label.textContent = classLabels[i] + ": " + scores[i].toFixed(2);
+                        if (i === maxScoreIndex) {
+                            label.classList.add("highlight");
+                        } else {
+                            label.classList.remove("highlight");
+                        }
+                    }
+                }, {
+                    includeSpectrogram: true,
+                    probabilityThreshold: 0.75,
+                    invokeCallbackOnNoiseAndUnknown: true,
+                    overlapFactor: 0.50
+                });
+                isListening = true;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
